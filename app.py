@@ -24,7 +24,7 @@ if not config.NVIDIA_API_KEY or config.NVIDIA_API_KEY.startswith("nvapi-your"):
     st.stop()
 
 # Initialize session state with version tracking to avoid stale graphs
-AGENT_VERSION = "v2_page_aware"
+AGENT_VERSION = "v3_page_autopass"
 
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())

@@ -107,7 +107,10 @@ def retrieve(state: UnifiedAgentState) -> Dict[str, Any]:
                 page_results = vectorstore.get(where=page_filter)
                 if page_results and page_results.get("documents"):
                     for text, meta in zip(page_results["documents"], page_results["metadatas"]):
-                        docs.append(Document(page_content=text, metadata=meta))
+                        # Mark these as page-matched so grading can auto-pass them
+                        meta_copy = dict(meta)
+                        meta_copy["_page_matched"] = True
+                        docs.append(Document(page_content=text, metadata=meta_copy))
                     print(f"[RAG: RETRIEVE] Page-aware filter matched {len(docs)} chunks for Page {target_page}")
             except Exception as e:
                 print(f"[RAG: RETRIEVE] Page filter lookup failed: {e}")
@@ -146,23 +149,42 @@ def grade_documents(state: UnifiedAgentState) -> Dict[str, Any]:
 
     grade_prompt = (
         "You are a grader assessing relevance of a retrieved document to a user question.\n"
-        "Here is the retrieved document:\n\n{context}\n\n"
+        "Here is the retrieved document:\n\n"
+        "Source: {source} (Page {page})\n"
+        "{context}\n\n"
         "Here is the user question: {question}\n"
         "If the document contains information related to the question, grade as 'yes'. Otherwise 'no'.\n"
         "Respond ONLY with 'yes' or 'no'."
     )
 
     for doc in documents:
+        # Auto-pass chunks that were fetched by exact page-number filter
+        # (they ARE the requested page — grading their semantic content is wrong)
+        if doc.metadata.get("_page_matched"):
+            source = doc.metadata.get("source", "doc")
+            page = doc.metadata.get("page", "?")
+            print(f"[GRADE] '{source}' Page {int(page)+1} -> AUTO-PASS (page-matched)")
+            filtered_docs.append(doc)
+            continue
+
         try:
-            prompt_text = grade_prompt.format(context=doc.page_content, question=question)
+            source = doc.metadata.get("source", "Unknown")
+            page = doc.metadata.get("page", "Unknown")
+            page_display = int(page) + 1 if isinstance(page, (int, float)) else page
+            prompt_text = grade_prompt.format(
+                context=doc.page_content,
+                question=question,
+                source=source,
+                page=page_display,
+            )
             response = llm.invoke([HumanMessage(content=prompt_text)])
             grade = response.content.strip().lower()
             
             if "yes" in grade:
-                print(f"[GRADE] '{doc.metadata.get('source', 'doc')}' -> RELEVANT (yes)")
+                print(f"[GRADE] '{source}' Page {page_display} -> RELEVANT (yes)")
                 filtered_docs.append(doc)
             else:
-                print(f"[GRADE] '{doc.metadata.get('source', 'doc')}' -> NOT RELEVANT (no)")
+                print(f"[GRADE] '{source}' Page {page_display} -> NOT RELEVANT (no)")
         except Exception:
             filtered_docs.append(doc)
 
