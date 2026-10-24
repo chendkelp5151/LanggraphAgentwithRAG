@@ -1,6 +1,7 @@
 """LangGraph Adaptive Router Graph: Dynamically routes between RAG and ReAct Tools based on query intent."""
 
 import os
+import re
 from typing import Dict, Any, List, Literal
 from pydantic import BaseModel, Field
 
@@ -34,7 +35,7 @@ def router_node(state: UnifiedAgentState) -> Dict[str, Any]:
         "You are an expert AI query router.\n"
         "Analyze the following user input and decide the best execution pathway:\n\n"
         "1. 'rag': Questions asking about internal documents, company knowledge, uploaded guides, "
-        "specifications (like Nemotron specs, technical architectures), or PDF/document QA.\n"
+        "specifications (like Nemotron specs, technical architectures), appendices, modules, or PDF/document QA.\n"
         "2. 'react': Questions requiring mathematical calculations, current date/time, personal notes, "
         "live general web search, general chatting, or conversational requests.\n\n"
         f"User Query: {question}\n\n"
@@ -88,7 +89,7 @@ def react_agent_node(state: UnifiedAgentState) -> Dict[str, Any]:
 # RAG Pathway: Nodes (Retrieve, Grade, Transform, Fallback, Generate)
 # ---------------------------------------------------------
 def retrieve(state: UnifiedAgentState) -> Dict[str, Any]:
-    """Retrieves top-k documents from ChromaDB matching the question with page-aware filtering."""
+    """Retrieves top-k documents from ChromaDB matching the question with page-aware and header-aware filtering."""
     question = state["question"]
     print(f"\n[RAG: RETRIEVE] Querying ChromaDB for: '{question}'")
     
@@ -96,18 +97,15 @@ def retrieve(state: UnifiedAgentState) -> Dict[str, Any]:
     try:
         vectorstore = get_vectorstore()
         
-        # 1. Page-aware retrieval: Check if query asks for a specific page (e.g. 'page 1', 'page 3')
-        import re
+        # 1. Page-aware retrieval: Check if query asks for a specific page (e.g. 'page 1', 'page 21')
         page_match = re.search(r'\bpage\s*(\d+)\b', question, re.IGNORECASE)
         if page_match:
             target_page = int(page_match.group(1))
-            # PyPDFLoader indexes pages 0-indexed (page 1 is 0)
             page_filter = {"page": target_page - 1}
             try:
                 page_results = vectorstore.get(where=page_filter)
                 if page_results and page_results.get("documents"):
                     for text, meta in zip(page_results["documents"], page_results["metadatas"]):
-                        # Mark these as page-matched so grading can auto-pass them
                         meta_copy = dict(meta)
                         meta_copy["_page_matched"] = True
                         docs.append(Document(page_content=text, metadata=meta_copy))
@@ -115,7 +113,38 @@ def retrieve(state: UnifiedAgentState) -> Dict[str, Any]:
             except Exception as e:
                 print(f"[RAG: RETRIEVE] Page filter lookup failed: {e}")
 
-        # 2. Dense Semantic Vector Search (k=6)
+        # 2. Structural Keyword & Header Matching (e.g. 'Appendix G', 'Module 6', 'Section 2')
+        header_match = re.search(r'\b(appendix\s+[a-z0-9]+|module\s+[a-z0-9]+|section\s+[a-z0-9]+)\b', question, re.IGNORECASE)
+        if header_match:
+            header_term = header_match.group(1).lower()
+            print(f"[RAG: RETRIEVE] Detected structural header: '{header_term}'")
+            try:
+                all_collection = vectorstore.get()
+                matched_pages = set()
+                header_docs = []
+                for text, meta in zip(all_collection.get("documents", []), all_collection.get("metadatas", [])):
+                    if header_term in text.lower():
+                        meta_copy = dict(meta)
+                        meta_copy["_keyword_matched"] = True
+                        header_docs.append(Document(page_content=text, metadata=meta_copy))
+                        if meta.get("page") is not None:
+                            matched_pages.add(meta["page"])
+                
+                # If an appendix or section spans across pages, include the subsequent page chunks
+                for p in matched_pages:
+                    next_page_results = vectorstore.get(where={"page": p + 1})
+                    if next_page_results and next_page_results.get("documents"):
+                        for n_text, n_meta in zip(next_page_results["documents"][:2], next_page_results["metadatas"][:2]):
+                            n_meta_copy = dict(n_meta)
+                            n_meta_copy["_keyword_matched"] = True
+                            header_docs.append(Document(page_content=n_text, metadata=n_meta_copy))
+
+                docs.extend(header_docs)
+                print(f"[RAG: RETRIEVE] Header filter added {len(header_docs)} chunks matching '{header_term}'")
+            except Exception as e:
+                print(f"[RAG: RETRIEVE] Header lookup failed: {e}")
+
+        # 3. Dense Semantic Vector Search (k=6)
         sim_docs = vectorstore.similarity_search(question, k=6)
         
         # Merge avoiding duplicates
@@ -158,19 +187,17 @@ def grade_documents(state: UnifiedAgentState) -> Dict[str, Any]:
     )
 
     for doc in documents:
-        # Auto-pass chunks that were fetched by exact page-number filter
-        # (they ARE the requested page — grading their semantic content is wrong)
-        if doc.metadata.get("_page_matched"):
-            source = doc.metadata.get("source", "doc")
-            page = doc.metadata.get("page", "?")
-            print(f"[GRADE] '{source}' Page {int(page)+1} -> AUTO-PASS (page-matched)")
+        source = doc.metadata.get("source", "doc")
+        page = doc.metadata.get("page", "?")
+        page_display = int(page) + 1 if isinstance(page, (int, float)) else page
+
+        # Auto-pass chunks that were fetched by exact page or header match
+        if doc.metadata.get("_page_matched") or doc.metadata.get("_keyword_matched"):
+            print(f"[GRADE] '{source}' Page {page_display} -> AUTO-PASS (page/header-matched)")
             filtered_docs.append(doc)
             continue
 
         try:
-            source = doc.metadata.get("source", "Unknown")
-            page = doc.metadata.get("page", "Unknown")
-            page_display = int(page) + 1 if isinstance(page, (int, float)) else page
             prompt_text = grade_prompt.format(
                 context=doc.page_content,
                 question=question,
@@ -245,7 +272,6 @@ def generate(state: UnifiedAgentState) -> Dict[str, Any]:
     documents = state.get("documents", [])
     
     print("\n[RAG: GENERATE] Synthesizing final answer with citations...")
-
     
     context_blocks = []
     for i, doc in enumerate(documents, start=1):
@@ -283,8 +309,13 @@ def decide_to_generate(state: UnifiedAgentState) -> Literal["transform_query", "
     iterations = state.get("iterations", 0)
     question = state.get("question", "").lower()
 
-    # If the user is asking about an internal document or specific page, do not search the external web
-    is_doc_specific = any(term in question for term in ["page", "pdf", "doc", "document", "file", "guide", "slide"])
+    # Document indicators: if query mentions internal document concepts, avoid external web search
+    doc_indicators = [
+        "page", "pdf", "doc", "document", "file", "guide", "slide",
+        "appendix", "module", "chapter", "section", "overview", "scenario",
+        "desktop flow", "power automate", "northwind"
+    ]
+    is_doc_specific = any(term in question for term in doc_indicators)
 
     if web_search and iterations < 1 and not is_doc_specific:
         return "transform_query"
