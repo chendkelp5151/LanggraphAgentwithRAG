@@ -1,4 +1,4 @@
-# ⚡ NVIDIA Nemotron 3 Ultra - LangChain Chat Agent
+# ⚡ NVIDIA Nemotron 3 Ultra - Langgraph RAG Agent
 
 A production-ready conversational AI agent built with **LangChain**, **LangGraph**, and **NVIDIA Nemotron 3 Ultra** (`nvidia/nemotron-3-ultra-550b-a55b`).
 
