@@ -1,0 +1,13 @@
+# NVIDIA Nemotron 3 Ultra Architecture & Specifications
+
+NVIDIA Nemotron 3 Ultra is a state-of-the-art 550B parameter Mixture-of-Experts (MoE) reasoning model.
+Key Features:
+- Architecture: Mixture of Experts (MoE) with 550B total parameters and active routing for sub-task specialization.
+- Context Window: Up to 128,000 tokens context window.
+- Precision: Optimized for FP8 and FP4 execution on NVIDIA Blackwell and Hopper architectures.
+- Primary Strengths: Autonomous multi-step reasoning, mathematical proof derivation, structured schema compliance (JSON/YAML), and complex tool orchestration.
+- Integration: Directly accessible via NVIDIA NIM (NVIDIA Inference Microservice) at build.nvidia.com or standard OpenAI-compatible API proxies.
+
+Deployment Guidelines:
+- For low-latency retrieval tasks, pair with NVIDIA NIM Embeddings (`nvidia/nv-embedqa-e5-v5`).
+- Temperature of 0.2 to 0.5 is recommended for deterministic reasoning and tool calls, while 0.7 is recommended for conversational agents.

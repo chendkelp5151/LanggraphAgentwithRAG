@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autonomous Architecture & Workflow</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.4; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.04); }
+    }
+    .node-active {
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+      border-color: #3b82f6 !important;
+    }
+    .connector-line {
+      stroke-dasharray: 6;
+      animation: dash 1.5s linear infinite;
+    }
+    @keyframes dash {
+      to { stroke-dashoffset: -12; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-8 font-sans antialiased">
+  <div class="max-w-6xl mx-auto space-y-8">
+    
+    <!-- Header -->
+    <header class="text-center space-y-3 pb-4 border-b border-slate-800">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider">
+        LangGraph & NVIDIA Nemotron 3 Ultra
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
+        🧠 Autonomous Architecture & Workflow
+      </h1>
+      <p class="text-slate-400 max-w-2xl mx-auto text-sm sm:text-base">
+        Interactive workflow representation of the autonomous intent-routed StateGraph, dynamically balancing RAG knowledge base retrieval and ReAct tool reasoning.
+      </p>
+    </header>
+
+    <!-- Interactive Simulation Controls -->
+    <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl backdrop-blur">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-semibold text-slate-200">🚀 Test Query Simulator</h2>
+          <p class="text-xs text-slate-400">Click a preset query to visualize how the model dynamically routes and executes through the graph:</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="simulate('rag-doc')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/30 transition">
+            📄 Document QA Query
+          </button>
+          <button onclick="simulate('react-math')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/30 transition">
+            🧮 Math & Tools Query
+          </button>
+          <button onclick="simulate('rag-fallback')" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/30 transition">
+            🌐 Missing Doc (Web Fallback)
+          </button>
+          <button onclick="resetSim()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+            🔄 Reset
+          </button>
+        </div>
+      </div>
+      <div id="sim-banner" class="mt-4 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs sm:text-sm text-slate-300 flex items-center justify-between">
+        <span id="sim-text">Select a preset or click on any node in the diagram below to inspect its component role.</span>
+        <span id="sim-badge" class="px-2 py-0.5 rounded text-xs font-mono bg-slate-700 text-slate-300">Idle</span>
+      </div>
+    </div>
+
+    <!-- Visual Architecture Diagram Canvas -->
+    <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 sm:p-10 relative overflow-hidden shadow-2xl">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+
+        <!-- Entry & Router (Spans across or top) -->
+        <div class="md:col-span-2 flex flex-col items-center space-y-4">
+          <!-- User Input Node -->
+          <div id="node-user" onclick="inspectNode('user')" class="cursor-pointer group p-4 rounded-xl bg-slate-800/80 border border-slate-700 hover:border-blue-400 transition-all text-center w-72 shadow-lg">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-bold block mb-1">Entry Point</span>
+            <span class="text-sm font-semibold text-white flex items-center justify-center gap-2">
+              👤 User Input Query
+            </span>
+          </div>
+
+          <div class="text-slate-600 text-xl font-bold">↓</div>
+
+          <!-- Router Node -->
+          <div id="node-router" onclick="inspectNode('router')" class="cursor-pointer group p-5 rounded-2xl bg-gradient-to-b from-indigo-950/70 to-slate-900 border-2 border-indigo-500/40 hover:border-indigo-400 transition-all text-center w-80 shadow-xl relative">
+            <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-indigo-500 text-[11px] font-bold text-white uppercase tracking-wider">
+              Autonomous Router
+            </div>
+            <span class="text-base font-bold text-indigo-200 flex items-center justify-center gap-2 mt-1">
+              🧠 Router Node (LLM)
+            </span>
+            <p class="text-xs text-indigo-300/80 mt-1">Classifies semantic intent: <span class="font-mono text-white">"rag"</span> vs <span class="font-mono text-white">"react"</span></p>
+          </div>
+        </div>
+
+        <!-- Branch 1: RAG Pipeline -->
+        <div class="space-y-4 bg-slate-950/50 p-5 rounded-2xl border border-blue-900/30">
+          <div class="flex items-center gap-2 text-blue-400 font-bold text-sm tracking-wide border-b border-blue-900/30 pb-2">
+            <span>📚</span> RAG KNOWLEDGE BASE PIPELINE
+          </div>
+
+          <!-- Retrieve Node -->
+          <div id="node-retrieve" onclick="inspectNode('retrieve')" class="cursor-pointer p-4 rounded-xl bg-slate-800/70 border border-slate-700/80 hover:border-blue-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-blue-200">1. Retrieve Node</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800">ChromaDB</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">FastEmbed ONNX dense vector retrieval (top-4 chunks).</p>
+          </div>
+
+          <!-- Grade Documents Node -->
+          <div id="node-grade" onclick="inspectNode('grade')" class="cursor-pointer p-4 rounded-xl bg-slate-800/70 border border-slate-700/80 hover:border-blue-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-blue-200">2. Grade Documents Node</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800">Relevance Check</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">LLM acts as binary judge ("yes"/"no") to filter out noise.</p>
+          </div>
+
+          <!-- Fallback Sub-Flow (Query Rewriter & Web Search) -->
+          <div id="node-fallback" onclick="inspectNode('fallback')" class="p-3.5 rounded-xl bg-purple-950/20 border border-purple-800/40 cursor-pointer hover:border-purple-500 transition space-y-2">
+            <div class="flex items-center justify-between text-xs font-semibold text-purple-300">
+              <span>🔄 Transform Query & 🌐 Web Search</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-200">Adaptive Fallback</span>
+            </div>
+            <p class="text-xs text-slate-400">Triggers if retrieved documents lack relevant information.</p>
+          </div>
+
+          <!-- Generate Node -->
+          <div id="node-generate" onclick="inspectNode('generate')" class="cursor-pointer p-4 rounded-xl bg-slate-800/70 border border-slate-700/80 hover:border-blue-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-blue-200">3. Generate Node</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">Citations</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Synthesizes strictly grounded answer citing exact sources.</p>
+          </div>
+        </div>
+
+        <!-- Branch 2: ReAct Tool Calling -->
+        <div class="space-y-4 bg-slate-950/50 p-5 rounded-2xl border border-emerald-900/30">
+          <div class="flex items-center gap-2 text-emerald-400 font-bold text-sm tracking-wide border-b border-emerald-900/30 pb-2">
+            <span>🛠️</span> REACT TOOL-CALLING PIPELINE
+          </div>
+
+          <!-- ReAct Agent Node -->
+          <div id="node-react" onclick="inspectNode('react')" class="cursor-pointer p-4 rounded-xl bg-slate-800/70 border border-slate-700/80 hover:border-emerald-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-emerald-200">ReAct Agent Node</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">Reasoning</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Nemotron LLM with bound tool definitions & multi-turn state.</p>
+          </div>
+
+          <!-- Tools Node (Loop) -->
+          <div id="node-tools" onclick="inspectNode('tools')" class="cursor-pointer p-4 rounded-xl bg-slate-800/70 border border-slate-700/80 hover:border-emerald-500 transition space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-sm text-emerald-200">ToolNode Executor</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800">Cyclical Loop</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+              <span class="bg-slate-900 px-2 py-1 rounded border border-slate-800">🧮 calculate</span>
+              <span class="bg-slate-900 px-2 py-1 rounded border border-slate-800">🕒 datetime</span>
+              <span class="bg-slate-900 px-2 py-1 rounded border border-slate-800">📝 create_note</span>
+              <span class="bg-slate-900 px-2 py-1 rounded border border-slate-800">🌐 search_web</span>
+            </div>
+          </div>
+
+          <!-- Finish Node -->
+          <div id="node-finish" class="p-4 rounded-xl bg-slate-900/40 border border-slate-800 text-center">
+            <span class="text-xs font-semibold text-slate-300">🏁 Final Response Delivery</span>
+            <p class="text-xs text-slate-500 mt-0.5">Streamed directly to Web UI or CLI.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Component Detail Inspector Panel -->
+    <div id="inspector" class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl transition-all">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+        <h3 id="inspect-title" class="text-lg font-bold text-white flex items-center gap-2">
+          🔍 Component Detail Inspector
+        </h3>
+        <span id="inspect-tag" class="text-xs px-2.5 py-1 rounded-md bg-blue-500/20 text-blue-300 font-mono">
+          Click a node to inspect
+        </span>
+      </div>
+      <div id="inspect-content" class="text-sm text-slate-300 leading-relaxed space-y-2">
+        Click any node in the architecture diagram above to view its role, prompt instructions, data structures, and conditional logic.
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const nodeDetails = {
+      user: {
+        title: "👤 User Input Query",
+        tag: "Graph Entry",
+        desc: "The entry point for all conversation queries. Inputs are packaged into a typed UnifiedAgentState containing the question, message history, document accumulator, and iteration trackers."
+      },
+      router: {
+        title: "🧠 Router Node (LLM Intent Classifier)",
+        tag: "Entry Router",
+        desc: "Analyzes semantic keywords and intent. If the query asks for company docs, uploaded guides, or specs, it routes to 'retrieve'. If the query asks for calculations, time, notes, or outside information, it routes to 'react_agent'."
+      },
+      retrieve: {
+        title: "📥 Retrieve Node (ChromaDB Vector Store)",
+        tag: "RAG Stage 1",
+        desc: "Runs local ONNX FastEmbed embeddings (BAAI/bge-small-en-v1.5) to find top-4 semantically similar chunks in ChromaDB without cloud API latency or costs."
+      },
+      grade: {
+        title: "⚖️ Grade Documents Node (Self-Correction)",
+        tag: "RAG Stage 2",
+        desc: "Uses an LLM binary classifier to evaluate if each chunk actually contains information addressing the query. Prevents hallucinating on irrelevant matches."
+      },
+      fallback: {
+        title: "🔄 Transform Query & 🌐 Web Search",
+        tag: "Adaptive Fallback",
+        desc: "If no retrieved chunks are relevant, an LLM query rewriter optimizes the search query for web syntax, and DuckDuckGo live search pulls real-time context."
+      },
+      generate: {
+        title: "✍️ Generate Node (Cited Synthesis)",
+        tag: "RAG Stage 3",
+        desc: "Synthesizes the verified chunks into a structured Markdown response with exact file citations (e.g. [sample_agent_guide.txt])."
+      },
+      react: {
+        title: "🛠️ ReAct Agent Node",
+        tag: "Tool Calling",
+        desc: "Executes the ReAct loop: reasons about the user request, decides whether tools are needed, and generates arguments according to registered tool schemas."
+      },
+      tools: {
+        title: "🔧 ToolNode Executor",
+        tag: "LangGraph Prebuilt",
+        desc: "Executes tools requested by the model: calculate (math), get_current_datetime (time), create_note (memos), and search_web (external queries)."
+      }
+    };
+
+    function inspectNode(key) {
+      const data = nodeDetails[key];
+      if (!data) return;
+      document.getElementById('inspect-title').innerText = data.title;
+      document.getElementById('inspect-tag').innerText = data.tag;
+      document.getElementById('inspect-content').innerHTML = `<p>${data.desc}</p>`;
+    }
+
+    function clearHighlights() {
+      document.querySelectorAll('[id^="node-"]').forEach(el => {
+        el.classList.remove('node-active', 'ring-2', 'ring-blue-400', 'ring-emerald-400', 'ring-purple-400');
+      });
+    }
+
+    function highlightNode(id, ringColor = 'ring-blue-400') {
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.add('node-active', 'ring-2', ringColor);
+      }
+    }
+
+    function simulate(scenario) {
+      clearHighlights();
+      const banner = document.getElementById('sim-text');
+      const badge = document.getElementById('sim-badge');
+
+      if (scenario === 'rag-doc') {
+        banner.innerHTML = "Query: <b>'What are the specifications of Nemotron 3 Ultra?'</b> → Router classified as <b>RAG</b> → Chunks retrieved & verified → Grounded answer generated.";
+        badge.innerText = "RAG Flow";
+        badge.className = "px-2 py-0.5 rounded text-xs font-mono bg-blue-900 text-blue-200";
+        highlightNode('node-user');
+        highlightNode('node-router');
+        highlightNode('node-retrieve');
+        highlightNode('node-grade');
+        highlightNode('node-generate');
+        inspectNode('generate');
+      } else if (scenario === 'react-math') {
+        banner.innerHTML = "Query: <b>'What is the square root of 144 plus 25?'</b> → Router classified as <b>ReAct</b> → ReAct Agent calls <b>calculate</b> tool → Output delivered.";
+        badge.innerText = "ReAct Flow";
+        badge.className = "px-2 py-0.5 rounded text-xs font-mono bg-emerald-900 text-emerald-200";
+        highlightNode('node-user');
+        highlightNode('node-router');
+        highlightNode('node-react', 'ring-emerald-400');
+        highlightNode('node-tools', 'ring-emerald-400');
+        highlightNode('node-finish', 'ring-emerald-400');
+        inspectNode('tools');
+      } else if (scenario === 'rag-fallback') {
+        banner.innerHTML = "Query: <b>'Who won the 2024 NBA Finals?'</b> → Router classified as <b>RAG</b> → Docs graded irrelevant → <b>Rewrote query & searched web</b> → Answer delivered.";
+        badge.innerText = "Fallback Flow";
+        badge.className = "px-2 py-0.5 rounded text-xs font-mono bg-purple-900 text-purple-200";
+        highlightNode('node-user');
+        highlightNode('node-router');
+        highlightNode('node-retrieve');
+        highlightNode('node-grade');
+        highlightNode('node-fallback', 'ring-purple-400');
+        highlightNode('node-generate', 'ring-purple-400');
+        inspectNode('fallback');
+      }
+    }
+
+    function resetSim() {
+      clearHighlights();
+      document.getElementById('sim-text').innerText = "Select a preset or click on any node in the diagram below to inspect its component role.";
+      document.getElementById('sim-badge').innerText = "Idle";
+      document.getElementById('sim-badge').className = "px-2 py-0.5 rounded text-xs font-mono bg-slate-700 text-slate-300";
+      inspectNode('router');
+    }
+  </script>
+</body>
+</html>

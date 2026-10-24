@@ -35,6 +35,7 @@ def get_llm():
             api_key=config.NVIDIA_API_KEY,
             temperature=config.TEMPERATURE,
             max_tokens=config.MAX_TOKENS,
+            timeout=120,
         )
     except (ImportError, Exception):
         pass
@@ -48,6 +49,7 @@ def get_llm():
             base_url="https://integrate.api.nvidia.com/v1",
             temperature=config.TEMPERATURE,
             max_tokens=config.MAX_TOKENS,
+            timeout=120,
         )
     except ImportError as e:
         raise ImportError(
@@ -85,3 +87,17 @@ def create_agent(tools: Optional[List] = None, checkpointer: Optional[MemorySave
         )
 
     return agent
+
+
+def create_rag_agent(checkpointer: Optional[MemorySaver] = None):
+    """Creates an Agentic RAG graph workflow powered by LangGraph and NVIDIA Nemotron."""
+    from graph import create_rag_graph
+    return create_rag_graph(checkpointer=checkpointer)
+
+
+def create_adaptive_agent(checkpointer: Optional[MemorySaver] = None):
+    """Creates a Unified Adaptive Agent that autonomously routes queries between RAG and ReAct tools."""
+    from graph import create_unified_agent_graph
+    return create_unified_agent_graph(checkpointer=checkpointer)
+
+
